@@ -30,19 +30,31 @@ func frame() tea.Cmd {
 }
 
 type model struct {
-	programsPath   string
-	programs       []string // list of programs in the directory
-	programOptions []string //things you can do with the program you chose
-	selected       map[int]struct{}
-	Choice         int //stores value of cursor position for first selection
-	secondChoice   int //stores value of cursor position for second selection
-	Chosen         bool
-	secondChosen   bool
-	Frames         int
-	Quitting       bool
-	optionOne      string
-	optionTwo      string
-	renderFlag     bool
+	programsPath string
+
+	programs        []string // list of programs in the directory
+	programOptions  []string //things you can do with the program you chose
+	selectedOptions []string
+
+	selected map[int]struct{} //unholy witchcraft, do not touch
+
+	Choice       int //stores value of cursor position for first selection
+	secondChoice int //stores value of cursor position for second selection
+
+	Chosen       bool
+	secondChosen bool
+
+	thirdChoice int //stores value of cursor pos for third selection
+	thirdChosen bool
+
+	Frames   int
+	Quitting bool
+
+	optionOne   string
+	optionTwo   string
+	optionThree string
+
+	renderFlag bool
 }
 
 func pathSelectModel() model {
@@ -53,15 +65,24 @@ func pathSelectModel() model {
 			"Return",
 			"Exit",
 		},
+		selectedOptions: []string{
+			//"Something Clever Here?",
+			//"Give the program's stdout?",
+			"Placeholder",
+			"Return",
+			"Exit",
+		},
 		selected:     make(map[int]struct{}), //mathematical set mapping for choice selection
 		Choice:       0,
 		secondChoice: 0,
+		thirdChoice:  0,
 		Chosen:       false,
 		secondChosen: false,
 		Frames:       0,
 		Quitting:     false,
 		optionOne:    "",
 		optionTwo:    "",
+		optionThree:  "",
 		renderFlag:   false, //used to wait and render checkmark before moving on
 	}
 }
@@ -71,7 +92,7 @@ func (m model) Init() tea.Cmd {
 	return nil //don't need to have an initially running function
 }
 
-// 🤔🤔🤔🤔🤔🤔~~~~~~~~Wut IS MY LOGIC~~~~~🤔🤔🤔🤔🤔🤔
+// 🤔🤔🤔🤔🤔🤔 ~~~~~~~ Logik ~~~~~~~~~~~~~~🤔🤔🤔🤔🤔🤔
 
 // Main update function.
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -86,10 +107,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Hand off the message and model to the appropriate update function for the
 	// appropriate view based on the current state.
-	if !m.Chosen {
+	if !m.Chosen && !m.secondChosen && !m.thirdChosen {
 		return updateProgChoice(msg, m)
+	} else if !m.secondChosen && !m.thirdChosen {
+		return updateOptionChoice(msg, m)
+	} else {
+		return updateSelectedChoice(msg, m)
 	}
-	return updateOptionChoice(msg, m)
 }
 
 // View Update 1 ~~~ Choosing a Program
@@ -131,8 +155,8 @@ func updateOptionChoice(msg tea.Msg, m model) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "j", "down":
 			m.secondChoice++
-			if m.secondChoice > len(m.programs)-1 { //don't allow cursor to exceed bounds
-				m.secondChoice = len(m.programs) - 1
+			if m.secondChoice > len(m.programOptions)-1 { //don't allow cursor to exceed bounds
+				m.secondChoice = len(m.programOptions) - 1
 			}
 		case "k", "up":
 			m.secondChoice--
@@ -160,12 +184,72 @@ func updateOptionChoice(msg tea.Msg, m model) (tea.Model, tea.Cmd) {
 					os.Exit(1)
 				}
 
+
 			case "Return":
 				//Send me back to menu one
 				m.Chosen = false //nothing has been chosen
 				m.secondChosen = false
+				m.thirdChosen = false
 				m.optionOne = "" //reset first choice
 				m.optionTwo = "" //reset return choice
+				m.optionThree = ""
+
+			case "Exit":
+				//quit the program
+				m.Quitting = true
+				return m, tea.Quit
+			}
+			return m, frame()
+		}
+	}
+
+	return m, nil
+}
+
+// View Update 3 ~~~ What to do after running a program
+func updateSelectedChoice(msg tea.Msg, m model) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "j", "down":
+			m.thirdChoice++
+			if m.thirdChoice > len(m.selectedOptions)-1 { //don't allow cursor to exceed bounds
+				m.thirdChoice = len(m.selectedOptions) - 1
+			}
+		case "k", "up":
+			m.thirdChoice--
+			if m.thirdChoice < 0 { // don't allow cursor to exceed bounds
+				m.thirdChoice = 0
+			}
+		case "enter":
+			m.thirdChosen = true
+			m.optionThree = m.selectedOptions[m.thirdChoice] //store the user's third choice
+			switch m.optionThree {
+			case "Placeholder":
+
+				//Run something?
+				cmd := exec.Command("lolcat /etc/passwd")
+				cmd.Dir = "/"
+
+				// Set the output to os.Stdout and os.Stderr
+				cmd.Stdout = os.Stdout
+				cmd.Stderr = os.Stderr
+				cmd.Stdin = os.Stdin
+
+				err := cmd.Run()
+				if err != nil {
+					fmt.Println("Error executing the command:", err)
+					os.Exit(1)
+				}
+
+			case "Return":
+				//Send me back to menu one
+				m.Chosen = false //nothing has been chosen
+				m.secondChosen = false
+				m.thirdChosen = false
+				m.optionOne = ""   //reset first choice
+				m.optionTwo = ""   //reset return choice
+				m.optionThree = "" // final choice
 
 			case "Exit":
 				//quit the program
@@ -188,15 +272,13 @@ func (m model) View() string {
 	}
 	if !m.Chosen { //have we made our first choice? && !m.renderFlag, was a test
 		s = listPrograms(m)
-
 	} else if !m.secondChosen { //have we made our second choice?
-		//time.Sleep(300 * time.Millisecond) //debug wait line
 		s = programQuestions(m)
 	} else {
 		s = chosenProgram(m) //now we're executing the program... or something
 	}
 
-	return indent.String("\n"+s+"\n\n", 5)
+	return indent.String("\n"+s+"\n\n", 2)
 }
 
 // Subview 1 ~~~ List Programs
@@ -226,19 +308,19 @@ func listPrograms(m model) string {
 	programList := ""
 	for i := startIndex; i < endIndex; i++ {
 		// Is the cursor pointing at this choice?
-		//cursor := " " // no cursor
 		cursor := unselectedStyle
+		icon := ""
 		if m.Choice == i {
+			icon = "🍆"
 			cursor = selectedStyle
+		} else {
+			icon = ""
 		}
-
-		//s += fmt.Sprintf("%s ゝ %s\n", cursor, m.programs[i]) //render the choice selected
 
 		// Render the program name with the appropriate styles
 		//program := "ゝ" + cursor + m.programs[i]
-		program := cursor.Render("🔥 ゝ " + m.programs[i])
-		// Append the program to the programList string
-		programList += listStyle.Render(program)
+		program := cursor.Render("ゝ " + m.programs[i])
+		programList += listStyle.Render(program + cursorStyle.Render(icon))
 	}
 
 	// The footer
@@ -268,7 +350,7 @@ func programQuestions(m model) string {
 		// Is the cursor pointing at this choice?
 		cursor := " " // no cursor
 		if m.secondChoice == i {
-			cursor = "🔥" // cursor!
+			cursor = "🍆" // cursor!
 		}
 
 		s += fmt.Sprintf("%s ゝ %s\n", cursor, choice) //render the choice selected
@@ -288,14 +370,35 @@ func programQuestions(m model) string {
 
 // Subview 2 ~~~ Chosen Program
 func chosenProgram(m model) string {
-	s := "This is the selected option view\n\n"
-	s += "Ideally there will be some status or something here\n\n"
+	// The header
+	s := "Program is running....\n\n"
+	s += "If you've launched a GUI application\n"
+	s += "Its window will be up somewhere\n"
 	s += "You've chosen to: "
 	s += fmt.Sprintf("%s\n", m.optionTwo)
+
+	// Iterate over our choices
+	for i, choice := range m.selectedOptions {
+		// Is the cursor pointing at this choice?
+		cursor := " " // no cursor
+		if m.thirdChoice == i {
+			cursor = "🍆" // cursor!
+		}
+
+		s += fmt.Sprintf("%s ゝ %s\n", cursor, choice) //render the choice selected
+	}
+
+	// The footer
+	s += "\nPress q, esc, or ctrl-c to quit.\n"
+
 	if m.Quitting {
 		s += "\n  さようなら!\n\n"
 	}
+
+	// Send the UI for rendering
+
 	return s
+
 }
 
 // 📑 what files are in a given directory
@@ -342,15 +445,15 @@ var (
 	cursorStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("200")).
 			Background(lipgloss.Color("252")).
-			Width(70).
+			Align(lipgloss.Right).
 			Margin(0, 0, 0, 0).
 			Padding(0, 0, 0, 0)
 
 	selectedStyle = lipgloss.NewStyle().
-			Width(70).
+			Width(68). //room for the icon
 			Foreground(lipgloss.Color("#ffffff")).
 			Background(lipgloss.Color("#ff00bf"))
-	unselectedStyle   = lipgloss.NewStyle().
+	unselectedStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("252")).
 			Background(lipgloss.Color("232"))
 
