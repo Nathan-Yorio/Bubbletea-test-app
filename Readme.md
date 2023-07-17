@@ -2,5 +2,7 @@
 
 ```sh
 go get github.com/charmbracelet/bubbletea
+go build programselector.go
+
 ```
 
