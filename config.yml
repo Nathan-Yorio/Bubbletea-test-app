@@ -1,3 +1,3 @@
 # testing with a .
-PROGRAMS_PATH: "/home/yorionathan/.local/bin"
-
+#PROGRAMS_PATH: "/home/yorionathan/.local/bin"
+PROGRAMS_PATH: "/Users/nathan.yorio/bin"
